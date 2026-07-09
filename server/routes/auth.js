@@ -1,31 +1,33 @@
 const express = require('express');
 const passport = require('passport');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
-const User = require('../models/User'); // Adjust path if your User model is different
+const User = require('../models/User'); 
 
 const router = express.Router();
 // Configure Passport Google Strategy
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    callbackURL: "http://localhost:5000/auth/google/callback"
+    // Make sure this matches your authorized redirect URI in Google Cloud!
+    callbackURL: '/auth/google/callback' 
   },
   async (accessToken, refreshToken, profile, done) => {
     try {
-      // Check if user already exists in our db
-      let user = await User.findOne({ email: profile.emails[0].value });
-      
+      // 1. Check if the user already exists in our database
+      let user = await User.findOne({ googleId: profile.id });
+
       if (user) {
+        // User exists, log them in
         return done(null, user);
       } else {
-        // Create new user if they don't exist
-        const newUser = new User({
-          fullName: profile.displayName,
+        // 2. User doesn't exist, create a new one using exact schema names
+        user = await User.create({
+          googleId: profile.id,
+          displayName: profile.displayName,
           email: profile.emails[0].value,
-          // You might need to adjust these fields based on your exact User.js schema
+          profileImage: profile.photos ? profile.photos[0].value : ''
         });
-        await newUser.save();
-        return done(null, newUser);
+        return done(null, user);
       }
     } catch (err) {
       console.error(err);
