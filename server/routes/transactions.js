@@ -37,6 +37,38 @@ router.post('/', async (req, res) => {
     res.status(500).json({ success: false, error: 'Server Error' });
   }
 });
+// @route   PUT /api/transactions/:id
+// @desc    Update a transaction
+router.put('/:id', async (req, res) => {
+  try {
+    let transaction = await Transaction.findById(req.params.id);
+
+    if (!transaction) {
+      return res.status(404).json({ success: false, error: 'No transaction found' });
+    }
+
+    // Security check: Make sure the logged-in user owns this transaction
+    if (transaction.user.toString() !== req.user.id) {
+      return res.status(401).json({ success: false, error: 'Not authorized' });
+    }
+
+    // Update the transaction with the new text and amount
+    transaction = await Transaction.findByIdAndUpdate(
+      req.params.id,
+      req.body,
+      { new: true, runValidators: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      data: transaction
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, error: 'Server Error' });
+  }
+});
+
 // @route   DELETE /api/transactions/:id
 // @desc    Delete a transaction
 router.delete('/:id', async (req, res) => {

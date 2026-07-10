@@ -57,8 +57,11 @@ scheduleEmailReminders();
 const authRoutes = require('./routes/auth');
 app.use('/auth', authRoutes);
 
-// ---> THE FIX: Import and use Transaction Routes <---
+// Import and use Transaction Routes <---
 app.use('/api/transactions', require('./routes/transactions'));
+
+// Import and use Goal Routes
+app.use('/api/goals', require('./routes/goals'));
 
 // Basic health check route
 app.get('/api/health', (req, res) => {
