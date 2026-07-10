@@ -2,14 +2,15 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import AiChat from './pages/AiChat';
+import Home from './pages/Home';
 import './App.css';
 
 function App() {
   return (
     <Router>
       <Routes>
-        {/* Default route loads the Login page */}
-        <Route path="/" element={<Login />} />
+        <Route path="/" element={<Home />} />
+        <Route path="/login" element={<Login />} />
         
         {/* Dashboard route */}
         <Route path="/dashboard" element={<Dashboard />} />

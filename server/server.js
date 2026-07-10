@@ -1,5 +1,6 @@
 // server.js
 const express = require('express');
+const path = require('path');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const passport = require('passport');
@@ -76,6 +77,14 @@ app.use('/api/ai', require('./routes/aiChat'));
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'API is running' });
 });
+
+// In production, Express serves the compiled React landing page and lets
+// React Router handle client-side URLs such as /dashboard and /ai-chat.
+if (process.env.NODE_ENV === 'production') {
+  const clientBuildPath = path.join(__dirname, '../client/dist');
+  app.use(express.static(clientBuildPath));
+  app.get('/{*splat}', (req, res) => res.sendFile(path.join(clientBuildPath, 'index.html')));
+}
 
 // Start server
 app.listen(PORT, () => {
