@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title } from 'chart.js';
 import { Doughnut, Bar, Line } from 'react-chartjs-2';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title);
 
 export default function Dashboard() {
+  const navigate = useNavigate();
   // --- TRANSACTION STATE ---
   const [transactions, setTransactions] = useState([]);
   const [error, setError] = useState('');
@@ -601,7 +603,10 @@ export default function Dashboard() {
       {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '10px', borderBottom: '2px solid #48c9b0' }}>
         <h1 style={{ margin: 0, color: '#1a5276' }}>FlowFin Dashboard</h1>
-        <button onClick={() => window.location.href = 'http://localhost:5000/auth/logout'} style={{ padding: '8px 16px', backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer' }}>Logout</button>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={() => navigate('/ai-chat')} style={{ padding: '8px 16px', backgroundColor: '#1a5276', color: '#fff', border: '1px solid #1a5276', borderRadius: '4px', cursor: 'pointer' }}>AI Assistant</button>
+          <button onClick={() => window.location.href = 'http://localhost:5000/auth/logout'} style={{ padding: '8px 16px', backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer' }}>Logout</button>
+        </div>
       </div>
       
       {error && <p style={{ color: 'red' }}>{error}</p>}
