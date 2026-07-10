@@ -36,6 +36,14 @@ const ReminderSchema = new mongoose.Schema({
   isPaid: {
     type: Boolean,
     default: false
+  },
+  emailSent: {
+    type: Boolean,
+    default: false
+  },
+  lastEmailSentAt: {
+    type: Date,
+    default: null
   }
 }, {
   timestamps: true,
