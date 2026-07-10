@@ -66,6 +66,9 @@ app.use('/api/goals', require('./routes/goals'));
 // Import and use Reminder Routes
 app.use('/api/reminders', require('./routes/reminders'));
 
+// Portfolio holdings and live stock data
+app.use('/api/portfolio', require('./routes/portfolio'));
+
 // Basic health check route
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'API is running' });

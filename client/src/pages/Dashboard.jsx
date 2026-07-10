@@ -1,9 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
-import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title } from 'chart.js';
-import { Doughnut, Bar } from 'react-chartjs-2';
+import { Chart as ChartJS, ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title } from 'chart.js';
+import { Doughnut, Bar, Line } from 'react-chartjs-2';
 
-ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, Title);
+ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title);
 
 export default function Dashboard() {
   // --- TRANSACTION STATE ---
@@ -66,6 +66,20 @@ export default function Dashboard() {
   const [expectedReturnRate, setExpectedReturnRate] = useState('');
   const [mutualFundResult, setMutualFundResult] = useState(null);
 
+  // --- PORTFOLIO STATE ---
+  const [portfolio, setPortfolio] = useState([]);
+  const [showPortfolio, setShowPortfolio] = useState(false);
+  const [showHoldingForm, setShowHoldingForm] = useState(false);
+  const [selectedHolding, setSelectedHolding] = useState(null);
+  const [stockSymbol, setStockSymbol] = useState('');
+  const [stockExchange, setStockExchange] = useState('NSE');
+  const [stockShares, setStockShares] = useState('');
+  const [stockPurchasePrice, setStockPurchasePrice] = useState('');
+  const [stockPurchaseDate, setStockPurchaseDate] = useState('');
+  const [portfolioDetails, setPortfolioDetails] = useState(null);
+  const [portfolioRange, setPortfolioRange] = useState('6m');
+  const [portfolioLoading, setPortfolioLoading] = useState(false);
+
   // --- UI STATE ---
   const [showReport, setShowReport] = useState(false);
   const fileInputRef = useRef(null);
@@ -84,6 +98,9 @@ export default function Dashboard() {
 
       const reminderRes = await axios.get('/api/reminders');
       setReminders(reminderRes.data.data);
+
+      const portfolioRes = await axios.get('/api/portfolio');
+      setPortfolio(portfolioRes.data.data);
     } catch (err) {
       console.error("Error fetching data", err);
       setError('Could not load dashboard data.');
@@ -430,6 +447,59 @@ export default function Dashboard() {
 
     setError('');
     setMutualFundResult({ totalInvestment, totalValue, estimatedReturns: totalValue - totalInvestment, yearlyData });
+  };
+
+  // --- PORTFOLIO LOGIC ---
+  const loadPortfolio = async () => {
+    const response = await axios.get('/api/portfolio');
+    setPortfolio(response.data.data);
+  };
+
+  const addHolding = async (event) => {
+    event.preventDefault();
+    try {
+      setPortfolioLoading(true);
+      await axios.post('/api/portfolio/stocks', {
+        symbol: stockSymbol.toUpperCase(), exchange: stockExchange, shares: Number(stockShares),
+        purchasePrice: Number(stockPurchasePrice), purchaseDate: stockPurchaseDate || undefined
+      });
+      await loadPortfolio();
+      setStockSymbol(''); setStockShares(''); setStockPurchasePrice(''); setStockPurchaseDate('');
+      setShowHoldingForm(false);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not add the holding.');
+    } finally {
+      setPortfolioLoading(false);
+    }
+  };
+
+  const removeHolding = async (holding) => {
+    if (!window.confirm(`Remove ${holding.symbol} from your portfolio?`)) return;
+    try {
+      await axios.delete(`/api/portfolio/stocks/${holding._id}`);
+      setPortfolio(portfolio.filter(item => item._id !== holding._id));
+      if (selectedHolding?._id === holding._id) { setSelectedHolding(null); setPortfolioDetails(null); }
+    } catch (err) {
+      setError('Could not remove the holding.');
+    }
+  };
+
+  const loadHoldingDetails = async (holding, range = portfolioRange) => {
+    try {
+      setPortfolioLoading(true);
+      const response = await axios.get(`/api/portfolio/details/${holding.symbol}`, { params: { exchange: holding.exchange, range } });
+      setSelectedHolding(holding);
+      setPortfolioDetails(response.data.data);
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not load stock details.');
+    } finally {
+      setPortfolioLoading(false);
+    }
+  };
+
+  const changePortfolioRange = async (range) => {
+    setPortfolioRange(range);
+    if (selectedHolding) await loadHoldingDetails(selectedHolding, range);
   };
 
   // --- CSV LOGIC ---
@@ -816,6 +886,9 @@ export default function Dashboard() {
           <button onClick={() => setShowMutualFundCalculator(!showMutualFundCalculator)} style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: '#148f77', color: 'white', border: 'none', borderRadius: '3px' }}>
             {showMutualFundCalculator ? 'Close MF Calculator' : 'Start MF Calculator'}
           </button>
+          <button onClick={() => setShowPortfolio(!showPortfolio)} style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: '#c26b15', color: 'white', border: 'none', borderRadius: '3px' }}>
+            {showPortfolio ? 'Close Portfolio' : 'View Portfolio'}
+          </button>
           <button onClick={() => setShowReport(!showReport)} style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: '#1a5276', color: 'white', border: 'none', borderRadius: '3px' }}>
             {showReport ? 'View Transactions' : 'View Charts'}
           </button>
@@ -900,6 +973,29 @@ export default function Dashboard() {
             </div>
             <div>{!mutualFundResult ? <div style={{ minHeight: '220px', display: 'grid', placeItems: 'center', textAlign: 'center', padding: '20px', border: '1px dashed #bbb', borderRadius: '8px', color: '#777' }}>Choose SIP or lump sum, then calculate your estimated future value.</div> : <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '20px' }}><div style={{ padding: '12px', borderRadius: '8px', backgroundColor: '#eaf4fb' }}><small>Invested</small><strong style={{ display: 'block', color: '#1a5276' }}>{formatINR(mutualFundResult.totalInvestment)}</strong></div><div style={{ padding: '12px', borderRadius: '8px', backgroundColor: '#eafaf1' }}><small>Estimated returns</small><strong style={{ display: 'block', color: '#148f77' }}>{formatINR(mutualFundResult.estimatedReturns)}</strong></div><div style={{ padding: '12px', borderRadius: '8px', backgroundColor: '#f4ecf7' }}><small>Future value</small><strong style={{ display: 'block', color: '#6f42c1' }}>{formatINR(mutualFundResult.totalValue)}</strong></div></div><Bar data={{ labels: mutualFundResult.yearlyData.map(item => `Year ${item.year}`), datasets: [{ label: 'Investment', data: mutualFundResult.yearlyData.map(item => item.investment), backgroundColor: 'rgba(54, 162, 235, 0.6)' }, { label: 'Estimated returns', data: mutualFundResult.yearlyData.map(item => item.returns), backgroundColor: 'rgba(20, 143, 119, 0.6)' }] }} options={{ responsive: true, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } }} /></>}</div>
           </div>
+        </div>
+      )}
+
+      {showPortfolio && (
+        <div style={{ padding: '20px', backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '30px' }}>
+          {selectedHolding && portfolioDetails ? (() => {
+            const quote = portfolioDetails.quote;
+            const holding = portfolio.find(item => item._id === selectedHolding._id) || selectedHolding;
+            const price = quote.regularMarketPrice || 0;
+            const totalInvestment = holding.shares * holding.purchasePrice;
+            const currentValue = holding.shares * price;
+            const gain = currentValue - totalInvestment;
+            return <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '15px', marginBottom: '20px', borderBottom: '2px solid #48c9b0', paddingBottom: '10px' }}><div><h2 style={{ color: '#1a5276', margin: 0 }}>{holding.symbol} <span style={{ fontSize: '15px', color: '#666' }}>({holding.exchange})</span></h2><p style={{ margin: '4px 0 0', color: '#666' }}>{quote.longName || quote.shortName || holding.symbol}</p></div><button onClick={() => { setSelectedHolding(null); setPortfolioDetails(null); }} style={{ padding: '7px 12px', cursor: 'pointer' }}>Back to Portfolio</button></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: '12px', marginBottom: '20px' }}><div style={{ padding: '14px', backgroundColor: '#eaf4fb', borderRadius: '8px' }}><small>Current price</small><strong style={{ display: 'block', fontSize: '22px', color: '#1a5276' }}>{formatINR(price)}</strong><span style={{ color: quote.regularMarketChange >= 0 ? '#148f77' : '#c0392b' }}>{quote.regularMarketChange >= 0 ? '+' : ''}{formatINR(quote.regularMarketChange)} ({Number(quote.regularMarketChangePercent || 0).toFixed(2)}%)</span></div><div style={{ padding: '14px', backgroundColor: '#f8f9fa', borderRadius: '8px' }}><small>Shares owned</small><strong style={{ display: 'block', fontSize: '22px' }}>{holding.shares}</strong><span>Average price: {formatINR(holding.purchasePrice)}</span></div><div style={{ padding: '14px', backgroundColor: gain >= 0 ? '#eafaf1' : '#fdecea', borderRadius: '8px' }}><small>Gain / loss</small><strong style={{ display: 'block', fontSize: '22px', color: gain >= 0 ? '#148f77' : '#c0392b' }}>{gain >= 0 ? '+' : ''}{formatINR(gain)}</strong><span>{totalInvestment ? ((gain / totalInvestment) * 100).toFixed(2) : '0.00'}%</span></div><div style={{ padding: '14px', backgroundColor: '#f4ecf7', borderRadius: '8px' }}><small>Current value</small><strong style={{ display: 'block', fontSize: '22px', color: '#6f42c1' }}>{formatINR(currentValue)}</strong><span>Invested: {formatINR(totalInvestment)}</span></div></div>
+              <div style={{ padding: '18px', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '15px' }}><div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '15px' }}><h4 style={{ margin: 0, color: '#1a5276' }}>Price history</h4><div style={{ display: 'flex', gap: '6px' }}>{['1m', '3m', '6m', '1y', '5y'].map(range => <button key={range} onClick={() => changePortfolioRange(range)} style={{ padding: '5px 8px', cursor: 'pointer', border: '1px solid #1a5276', borderRadius: '3px', backgroundColor: portfolioRange === range ? '#1a5276' : 'white', color: portfolioRange === range ? 'white' : '#1a5276' }}>{range.toUpperCase()}</button>)}</div></div><Line data={{ labels: portfolioDetails.historical.map(day => new Date(day.date).toLocaleDateString()), datasets: [{ label: 'Closing price', data: portfolioDetails.historical.map(day => day.close), borderColor: '#1a5276', backgroundColor: 'rgba(26, 82, 118, 0.12)', fill: true, tension: 0.2, pointRadius: 0 }] }} options={{ responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: false } } }} /></div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '10px', color: '#555', fontSize: '14px' }}><span>Previous close: <strong>{formatINR(quote.regularMarketPreviousClose)}</strong></span><span>Day range: <strong>{formatINR(quote.regularMarketDayLow)} – {formatINR(quote.regularMarketDayHigh)}</strong></span><span>52-week range: <strong>{formatINR(quote.fiftyTwoWeekLow)} – {formatINR(quote.fiftyTwoWeekHigh)}</strong></span><span>Market cap: <strong>{quote.marketCap ? formatINR(quote.marketCap) : '—'}</strong></span></div>
+            </>;
+          })() : <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '15px', marginBottom: '10px' }}><div><h2 style={{ color: '#1a5276', margin: 0 }}>Stock Portfolio</h2><p style={{ color: '#666', margin: '4px 0 0' }}>Saved holdings with live Yahoo Finance market data.</p></div><button onClick={() => setShowHoldingForm(!showHoldingForm)} style={{ padding: '8px 12px', backgroundColor: '#c26b15', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{showHoldingForm ? 'Cancel' : '+ Add Holding'}</button></div>
+            {showHoldingForm && <form onSubmit={addHolding} style={{ padding: '15px', margin: '18px 0', backgroundColor: '#f9f9f9', border: '1px solid #eee', borderRadius: '8px' }}><h4 style={{ marginTop: 0 }}>Add a stock holding</h4><p style={{ color: '#666', fontSize: '13px' }}>Use the ticker without the exchange suffix: for example, RELIANCE for NSE or BSE.</p><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}><input placeholder="Symbol (e.g. RELIANCE)" value={stockSymbol} onChange={e => setStockSymbol(e.target.value.toUpperCase())} required style={{ padding: '10px' }} /><select value={stockExchange} onChange={e => setStockExchange(e.target.value)} style={{ padding: '10px' }}><option value="NSE">NSE</option><option value="BSE">BSE</option></select><input type="number" min="0.0001" step="any" placeholder="Shares" value={stockShares} onChange={e => setStockShares(e.target.value)} required style={{ padding: '10px' }} /><input type="number" min="0" step="0.01" placeholder="Purchase price (₹)" value={stockPurchasePrice} onChange={e => setStockPurchasePrice(e.target.value)} required style={{ padding: '10px' }} /><input type="date" value={stockPurchaseDate} onChange={e => setStockPurchaseDate(e.target.value)} style={{ padding: '10px' }} /></div><button type="submit" disabled={portfolioLoading} style={{ marginTop: '12px', padding: '10px 16px', backgroundColor: '#1a5276', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{portfolioLoading ? 'Verifying…' : 'Save Holding'}</button></form>}
+            {portfolio.length === 0 ? <div style={{ padding: '35px', textAlign: 'center', border: '1px dashed #bbb', borderRadius: '8px', color: '#777' }}>No holdings yet. Add your first NSE or BSE stock to start tracking it.</div> : <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '12px', margin: '20px 0' }}><div style={{ padding: '13px', borderRadius: '8px', backgroundColor: '#eaf4fb' }}><small>Total invested</small><strong style={{ display: 'block', fontSize: '20px' }}>{formatINR(portfolio.reduce((sum, item) => sum + (item.totalInvestment || item.shares * item.purchasePrice), 0))}</strong></div><div style={{ padding: '13px', borderRadius: '8px', backgroundColor: '#eafaf1' }}><small>Live value</small><strong style={{ display: 'block', fontSize: '20px' }}>{formatINR(portfolio.reduce((sum, item) => sum + (item.currentValue || 0), 0))}</strong></div><div style={{ padding: '13px', borderRadius: '8px', backgroundColor: '#f4ecf7' }}><small>Live gain / loss</small><strong style={{ display: 'block', fontSize: '20px' }}>{formatINR(portfolio.reduce((sum, item) => sum + (item.gain || 0), 0))}</strong></div></div><div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '15px' }}>{portfolio.map(holding => <div key={holding._id} style={{ border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden' }}><div style={{ padding: '12px 15px', backgroundColor: '#1a5276', color: 'white', display: 'flex', justifyContent: 'space-between' }}><strong>{holding.symbol}</strong><span>{holding.exchange}</span></div><div style={{ padding: '15px' }}><p style={{ marginTop: 0, color: '#666', minHeight: '20px' }}>{holding.name || holding.quoteError || 'Loading quote…'}</p><p><strong>{holding.currentPrice ? formatINR(holding.currentPrice) : '—'}</strong> · {holding.shares} shares</p><p style={{ color: holding.gain >= 0 ? '#148f77' : '#c0392b' }}>{holding.gain === undefined ? 'Live price unavailable' : `${holding.gain >= 0 ? '+' : ''}${formatINR(holding.gain)} (${holding.gainPercentage.toFixed(2)}%)`}</p><div style={{ display: 'flex', gap: '8px' }}><button onClick={() => loadHoldingDetails(holding)} disabled={portfolioLoading || !!holding.quoteError} style={{ flex: 1, padding: '8px', cursor: 'pointer' }}>View Details</button><button onClick={() => removeHolding(holding)} style={{ padding: '8px', color: '#c0392b', cursor: 'pointer' }}>Remove</button></div></div></div>)}</div></>}
+          </>}
         </div>
       )}
 
