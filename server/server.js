@@ -20,7 +20,7 @@ mongoose.connect(process.env.MONGODB_URI)
   .catch(err => console.error('MongoDB connection error:', err));
 
 // Middleware
-// Critical: Configure CORS to accept requests from your future React app
+// Critical: Configure CORS to accept requests from your React app
 app.use(cors({
   origin: 'http://localhost:5173', // Vite's default port
   credentials: true // Required for sending session cookies back and forth
@@ -56,6 +56,9 @@ scheduleEmailReminders();
 // Import and use Auth Routes
 const authRoutes = require('./routes/auth');
 app.use('/auth', authRoutes);
+
+// ---> THE FIX: Import and use Transaction Routes <---
+app.use('/api/transactions', require('./routes/transactions'));
 
 // Basic health check route
 app.get('/api/health', (req, res) => {

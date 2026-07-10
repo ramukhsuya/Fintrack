@@ -4,23 +4,20 @@ const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const User = require('../models/User'); 
 
 const router = express.Router();
+
 // Configure Passport Google Strategy
 passport.use(new GoogleStrategy({
     clientID: process.env.GOOGLE_CLIENT_ID,
     clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-    // Make sure this matches your authorized redirect URI in Google Cloud!
     callbackURL: '/auth/google/callback' 
   },
   async (accessToken, refreshToken, profile, done) => {
     try {
-      // 1. Check if the user already exists in our database
       let user = await User.findOne({ googleId: profile.id });
 
       if (user) {
-        // User exists, log them in
         return done(null, user);
       } else {
-        // 2. User doesn't exist, create a new one using exact schema names
         user = await User.create({
           googleId: profile.id,
           displayName: profile.displayName,
@@ -59,12 +56,11 @@ router.get('/google', passport.authenticate('google', { scope: ['profile', 'emai
 router.get('/google/callback', 
   passport.authenticate('google', { failureRedirect: 'http://localhost:5173/login' }),
   (req, res) => {
-    // Successful authentication, redirect to React frontend dashboard
     res.redirect('http://localhost:5173/dashboard');
   }
 );
 
-// 3. Get Current Logged-In User (React will call this on load)
+// 3. Get Current Logged-In User
 router.get('/current_user', (req, res) => {
   if (req.isAuthenticated()) {
     res.status(200).json({ success: true, user: req.user });
@@ -73,11 +69,15 @@ router.get('/current_user', (req, res) => {
   }
 });
 
-// 4. Logout Route
+// 4. Logout Route (ONLY ONE THIS TIME!)
 router.get('/logout', (req, res, next) => {
   req.logout((err) => {
     if (err) { return next(err); }
-    res.status(200).json({ success: true, message: 'Logged out successfully' });
+    
+    req.session.destroy(() => {
+      res.clearCookie('connect.sid');
+      res.redirect('http://localhost:5173/');
+    });
   });
 });
 
