@@ -32,6 +32,19 @@ export default function Dashboard() {
   const [showContributeModal, setShowContributeModal] = useState(false);
   const [contributeAmount, setContributeAmount] = useState('');
 
+  // --- REMINDER STATE ---
+  const [reminders, setReminders] = useState([]);
+  const [showReminderForm, setShowReminderForm] = useState(false);
+  const [selectedReminder, setSelectedReminder] = useState(null);
+  const [isEditingReminder, setIsEditingReminder] = useState(false);
+  const [reminderTitle, setReminderTitle] = useState('');
+  const [reminderAmount, setReminderAmount] = useState('');
+  const [reminderCategory, setReminderCategory] = useState('');
+  const [reminderDueDate, setReminderDueDate] = useState('');
+  const [reminderRecurringType, setReminderRecurringType] = useState('none');
+  const [reminderDays, setReminderDays] = useState('3');
+  const [reminderNotes, setReminderNotes] = useState('');
+
   // --- UI STATE ---
   const [showReport, setShowReport] = useState(false);
   const fileInputRef = useRef(null);
@@ -47,6 +60,9 @@ export default function Dashboard() {
       
       const goalRes = await axios.get('/api/goals');
       setGoals(goalRes.data.data);
+
+      const reminderRes = await axios.get('/api/reminders');
+      setReminders(reminderRes.data.data);
     } catch (err) {
       console.error("Error fetching data", err);
       setError('Could not load dashboard data.');
@@ -200,6 +216,84 @@ export default function Dashboard() {
     }
   };
 
+  // --- REMINDER LOGIC ---
+  const resetReminderForm = () => {
+    setReminderTitle('');
+    setReminderAmount('');
+    setReminderCategory('');
+    setReminderDueDate('');
+    setReminderRecurringType('none');
+    setReminderDays('3');
+    setReminderNotes('');
+  };
+
+  const reminderPayload = () => ({
+    title: reminderTitle,
+    amount: Number(reminderAmount),
+    category: reminderCategory,
+    dueDate: reminderDueDate,
+    recurringType: reminderRecurringType,
+    reminderDays: Number(reminderDays),
+    notes: reminderNotes
+  });
+
+  const handleReminderSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await axios.post('/api/reminders', reminderPayload());
+      setReminders([...reminders, res.data.data].sort((a, b) => new Date(a.dueDate) - new Date(b.dueDate)));
+      resetReminderForm();
+      setShowReminderForm(false);
+    } catch (err) {
+      setError('Failed to add reminder.');
+    }
+  };
+
+  const handleEditReminderClick = () => {
+    setReminderTitle(selectedReminder.title);
+    setReminderAmount(selectedReminder.amount);
+    setReminderCategory(selectedReminder.category);
+    setReminderDueDate(new Date(selectedReminder.dueDate).toISOString().split('T')[0]);
+    setReminderRecurringType(selectedReminder.recurringType || 'none');
+    setReminderDays(String(selectedReminder.reminderDays || 3));
+    setReminderNotes(selectedReminder.notes || '');
+    setIsEditingReminder(true);
+  };
+
+  const handleUpdateReminder = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await axios.put(`/api/reminders/${selectedReminder._id}`, reminderPayload());
+      setReminders(reminders.map(r => r._id === selectedReminder._id ? res.data.data : r));
+      setSelectedReminder(res.data.data);
+      setIsEditingReminder(false);
+    } catch (err) {
+      setError('Failed to update reminder.');
+    }
+  };
+
+  const handleReminderPaid = async () => {
+    try {
+      const res = await axios.put(`/api/reminders/${selectedReminder._id}`, { isPaid: !selectedReminder.isPaid });
+      setReminders(reminders.map(r => r._id === selectedReminder._id ? res.data.data : r));
+      setSelectedReminder(res.data.data);
+    } catch (err) {
+      setError('Failed to update reminder status.');
+    }
+  };
+
+  const handleDeleteReminder = async () => {
+    if (!window.confirm('Are you sure you want to delete this reminder? This action cannot be undone.')) return;
+    try {
+      await axios.delete(`/api/reminders/${selectedReminder._id}`);
+      setReminders(reminders.filter(r => r._id !== selectedReminder._id));
+      setSelectedReminder(null);
+      setIsEditingReminder(false);
+    } catch (err) {
+      setError('Failed to delete reminder.');
+    }
+  };
+
   // --- CSV LOGIC ---
   const exportToCSV = () => {
     let csvContent = "Description,Amount,Date\n";
@@ -279,6 +373,19 @@ export default function Dashboard() {
       };
     }
   }
+
+  const getDaysUntilDue = (reminder) => {
+    if (typeof reminder.daysUntilDue === 'number') return reminder.daysUntilDue;
+    const dueDate = new Date(reminder.dueDate);
+    dueDate.setHours(0, 0, 0, 0);
+    const currentDate = new Date();
+    currentDate.setHours(0, 0, 0, 0);
+    return Math.round((dueDate - currentDate) / (1000 * 60 * 60 * 24));
+  };
+  const activeReminders = reminders.filter(reminder => !reminder.isPaid);
+  const overdueReminders = activeReminders.filter(reminder => getDaysUntilDue(reminder) < 0);
+  const upcomingReminders = activeReminders.filter(reminder => getDaysUntilDue(reminder) >= 0);
+  const paidReminders = reminders.filter(reminder => reminder.isPaid);
 
   return (
     <div style={{ padding: '20px', maxWidth: '900px', margin: '0 auto', fontFamily: 'sans-serif' }}>
@@ -497,6 +604,63 @@ export default function Dashboard() {
                 ))
               )}
             </div>
+          </>
+        )}
+      </div>
+
+      {/* BILL REMINDERS SECTION */}
+      <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '30px', border: '1px solid #e0e0e0' }}>
+        {selectedReminder ? (
+          <div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #48c9b0', paddingBottom: '10px' }}>
+              <h2 style={{ margin: 0, color: '#1a5276' }}>{isEditingReminder ? `Edit Reminder: ${selectedReminder.title}` : selectedReminder.title}</h2>
+              <button onClick={() => isEditingReminder ? setIsEditingReminder(false) : setSelectedReminder(null)} style={{ padding: '6px 12px', backgroundColor: '#f4f4f4', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer' }}>{isEditingReminder ? 'Cancel Edit' : 'Back to Reminders'}</button>
+            </div>
+
+            {isEditingReminder ? (
+              <form onSubmit={handleUpdateReminder} style={{ padding: '15px', backgroundColor: '#f9f9f9', borderRadius: '8px', border: '1px solid #eee' }}>
+                <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
+                  <div style={{ flex: 1 }}><label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Bill Name</label><input value={reminderTitle} onChange={e => setReminderTitle(e.target.value)} required style={{ width: '100%', padding: '10px', boxSizing: 'border-box' }} /></div>
+                  <div style={{ flex: 1 }}><label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Amount ($)</label><input type="number" min="0.01" step="0.01" value={reminderAmount} onChange={e => setReminderAmount(e.target.value)} required style={{ width: '100%', padding: '10px', boxSizing: 'border-box' }} /></div>
+                </div>
+                <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
+                  <div style={{ flex: 1 }}><label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Category</label><select value={reminderCategory} onChange={e => setReminderCategory(e.target.value)} required style={{ width: '100%', padding: '10px' }}><option value="">Select a category</option><option>Utilities</option><option>Rent/Mortgage</option><option>Insurance</option><option>Subscription</option><option>Credit Card</option><option>Loan Payment</option><option>Phone/Internet</option><option>Education</option><option>Healthcare</option><option>Tax</option><option>Other</option></select></div>
+                  <div style={{ flex: 1 }}><label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Due Date</label><input type="date" value={reminderDueDate} onChange={e => setReminderDueDate(e.target.value)} required style={{ width: '100%', padding: '10px', boxSizing: 'border-box' }} /></div>
+                </div>
+                <div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}>
+                  <div style={{ flex: 1 }}><label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Repeats</label><select value={reminderRecurringType} onChange={e => setReminderRecurringType(e.target.value)} style={{ width: '100%', padding: '10px' }}><option value="none">Does not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select></div>
+                  <div style={{ flex: 1 }}><label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Remind Me</label><select value={reminderDays} onChange={e => setReminderDays(e.target.value)} style={{ width: '100%', padding: '10px' }}><option value="1">1 day before</option><option value="2">2 days before</option><option value="3">3 days before</option><option value="5">5 days before</option><option value="7">7 days before</option><option value="14">14 days before</option></select></div>
+                </div>
+                <label style={{ display: 'block', marginBottom: '5px', fontWeight: 'bold' }}>Notes (optional)</label><textarea value={reminderNotes} onChange={e => setReminderNotes(e.target.value)} rows="3" style={{ width: '100%', padding: '10px', boxSizing: 'border-box', marginBottom: '15px' }} />
+                <button type="submit" style={{ width: '100%', padding: '12px', backgroundColor: '#1a5276', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Save Changes</button>
+              </form>
+            ) : (
+              <>
+                {(() => {
+                  const days = getDaysUntilDue(selectedReminder);
+                  const status = selectedReminder.isPaid ? { label: 'Paid', color: '#28b463' } : days < 0 ? { label: `Overdue by ${Math.abs(days)} day${Math.abs(days) === 1 ? '' : 's'}`, color: '#e74c3c' } : { label: days === 0 ? 'Due today' : `Due in ${days} day${days === 1 ? '' : 's'}`, color: days <= Number(selectedReminder.reminderDays || 3) ? '#f39c12' : '#2e86c1' };
+                  return <div style={{ padding: '15px', marginBottom: '20px', borderRadius: '5px', color: 'white', backgroundColor: status.color }}><strong>{status.label}</strong></div>;
+                })()}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '15px', marginBottom: '20px' }}>
+                  <div style={{ padding: '15px', border: '1px solid #ddd', borderRadius: '8px' }}><strong>Amount</strong><p style={{ fontSize: '22px', color: '#1a5276', marginBottom: 0 }}>${Number(selectedReminder.amount).toFixed(2)}</p></div>
+                  <div style={{ padding: '15px', border: '1px solid #ddd', borderRadius: '8px' }}><strong>Due Date</strong><p style={{ marginBottom: 0 }}>{new Date(selectedReminder.dueDate).toLocaleDateString()}</p></div>
+                  <div style={{ padding: '15px', border: '1px solid #ddd', borderRadius: '8px' }}><strong>Category</strong><p style={{ marginBottom: 0 }}>{selectedReminder.category}</p></div>
+                  <div style={{ padding: '15px', border: '1px solid #ddd', borderRadius: '8px' }}><strong>Repeats</strong><p style={{ marginBottom: 0, textTransform: 'capitalize' }}>{selectedReminder.recurringType || 'none'}</p></div>
+                </div>
+                {selectedReminder.notes && <div style={{ padding: '15px', backgroundColor: '#f8f9fa', borderRadius: '8px', marginBottom: '20px' }}><strong>Notes</strong><p style={{ marginBottom: 0 }}>{selectedReminder.notes}</p></div>}
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', flexWrap: 'wrap', padding: '15px', backgroundColor: '#f8f9fa', border: '1px solid #ddd', borderRadius: '8px' }}>
+                  <div><button onClick={handleEditReminderClick} style={{ padding: '8px 16px', backgroundColor: '#1a5276', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', marginRight: '10px' }}>Edit Reminder</button><button onClick={handleReminderPaid} style={{ padding: '8px 16px', backgroundColor: '#28b463', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{selectedReminder.isPaid ? 'Mark as Unpaid' : 'Mark as Paid'}</button></div>
+                  <button onClick={handleDeleteReminder} style={{ padding: '8px 16px', backgroundColor: 'transparent', color: '#e74c3c', border: '1px solid #e74c3c', borderRadius: '4px', cursor: 'pointer' }}>Delete Reminder</button>
+                </div>
+              </>
+            )}
+          </div>
+        ) : (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}><h2 style={{ margin: 0, color: '#1a5276' }}>Bill Reminders</h2><button onClick={() => { setShowReminderForm(!showReminderForm); resetReminderForm(); }} style={{ padding: '6px 12px', backgroundColor: showReminderForm ? '#6c757d' : '#48c9b0', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}>{showReminderForm ? 'Cancel' : '+ Add Reminder'}</button></div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '20px' }}><div style={{ padding: '14px', borderRadius: '8px', textAlign: 'center', backgroundColor: '#fdecea', color: '#c0392b' }}><strong>Overdue</strong><div style={{ fontSize: '24px' }}>{overdueReminders.length}</div></div><div style={{ padding: '14px', borderRadius: '8px', textAlign: 'center', backgroundColor: '#eaf4fb', color: '#1a5276' }}><strong>Upcoming</strong><div style={{ fontSize: '24px' }}>{upcomingReminders.length}</div></div><div style={{ padding: '14px', borderRadius: '8px', textAlign: 'center', backgroundColor: '#eafaf1', color: '#1e8449' }}><strong>Paid</strong><div style={{ fontSize: '24px' }}>{paidReminders.length}</div></div></div>
+            {showReminderForm && <form onSubmit={handleReminderSubmit} style={{ padding: '15px', backgroundColor: '#f9f9f9', borderRadius: '8px', border: '1px solid #eee', marginBottom: '20px' }}><h4 style={{ marginTop: 0 }}>Add Bill Reminder</h4><div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}><input placeholder="Bill name" value={reminderTitle} onChange={e => setReminderTitle(e.target.value)} required style={{ flex: 1, padding: '10px' }} /><input type="number" placeholder="Amount" min="0.01" step="0.01" value={reminderAmount} onChange={e => setReminderAmount(e.target.value)} required style={{ flex: 1, padding: '10px' }} /></div><div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}><select value={reminderCategory} onChange={e => setReminderCategory(e.target.value)} required style={{ flex: 1, padding: '10px' }}><option value="">Select category</option><option>Utilities</option><option>Rent/Mortgage</option><option>Insurance</option><option>Subscription</option><option>Credit Card</option><option>Loan Payment</option><option>Phone/Internet</option><option>Education</option><option>Healthcare</option><option>Tax</option><option>Other</option></select><input type="date" min={todayFormatted} value={reminderDueDate} onChange={e => setReminderDueDate(e.target.value)} required style={{ flex: 1, padding: '10px' }} /></div><div style={{ display: 'flex', gap: '15px', marginBottom: '15px' }}><select value={reminderRecurringType} onChange={e => setReminderRecurringType(e.target.value)} style={{ flex: 1, padding: '10px' }}><option value="none">Does not repeat</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option><option value="yearly">Yearly</option></select><select value={reminderDays} onChange={e => setReminderDays(e.target.value)} style={{ flex: 1, padding: '10px' }}><option value="1">1 day before</option><option value="2">2 days before</option><option value="3">3 days before</option><option value="5">5 days before</option><option value="7">7 days before</option><option value="14">14 days before</option></select></div><textarea placeholder="Notes (optional)" value={reminderNotes} onChange={e => setReminderNotes(e.target.value)} rows="2" style={{ width: '100%', padding: '10px', boxSizing: 'border-box', marginBottom: '15px' }} /><button type="submit" style={{ width: '100%', padding: '12px', backgroundColor: '#1a5276', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Create Reminder</button></form>}
+            <div style={{ display: 'flex', gap: '15px', overflowX: 'auto', paddingBottom: '10px' }}>{reminders.length === 0 ? <p style={{ color: '#777' }}>No bill reminders yet. Add one to track upcoming payments.</p> : reminders.map(reminder => { const days = getDaysUntilDue(reminder); const color = reminder.isPaid ? '#28b463' : days < 0 ? '#e74c3c' : days <= Number(reminder.reminderDays || 3) ? '#f39c12' : '#2e86c1'; const label = reminder.isPaid ? 'Paid' : days < 0 ? `${Math.abs(days)} days overdue` : days === 0 ? 'Due today' : `Due in ${days} days`; return <div key={reminder._id} style={{ minWidth: '260px', border: '1px solid #ddd', borderRadius: '8px', overflow: 'hidden', boxShadow: '0 2px 4px rgba(0,0,0,0.05)' }}><div style={{ backgroundColor: color, color: 'white', padding: '10px 15px', display: 'flex', justifyContent: 'space-between', gap: '8px' }}><strong>{reminder.title}</strong><span style={{ fontSize: '12px' }}>{label}</span></div><div style={{ padding: '15px' }}><p><strong>${Number(reminder.amount).toFixed(2)}</strong> · {reminder.category}</p><p style={{ fontSize: '14px' }}>Due {new Date(reminder.dueDate).toLocaleDateString()}</p><button onClick={() => setSelectedReminder(reminder)} style={{ width: '100%', padding: '8px', backgroundColor: '#f4f4f4', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer' }}>View Details</button></div></div>; })}</div>
           </>
         )}
       </div>

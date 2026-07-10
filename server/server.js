@@ -63,6 +63,9 @@ app.use('/api/transactions', require('./routes/transactions'));
 // Import and use Goal Routes
 app.use('/api/goals', require('./routes/goals'));
 
+// Import and use Reminder Routes
+app.use('/api/reminders', require('./routes/reminders'));
+
 // Basic health check route
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'API is running' });
