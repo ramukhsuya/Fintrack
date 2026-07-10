@@ -45,6 +45,27 @@ export default function Dashboard() {
   const [reminderDays, setReminderDays] = useState('3');
   const [reminderNotes, setReminderNotes] = useState('');
 
+  // --- ITR TAX CALCULATOR STATE (FY 2024-25) ---
+  const [showTaxCalculator, setShowTaxCalculator] = useState(false);
+  const [taxRegime, setTaxRegime] = useState('new');
+  const [ageGroup, setAgeGroup] = useState('general');
+  const [salaryIncome, setSalaryIncome] = useState('');
+  const [otherTaxIncome, setOtherTaxIncome] = useState('');
+  const [section80C, setSection80C] = useState('');
+  const [section80D, setSection80D] = useState('');
+  const [housingLoan, setHousingLoan] = useState('');
+  const [otherDeductions, setOtherDeductions] = useState('');
+  const [taxResult, setTaxResult] = useState(null);
+
+  // --- MUTUAL FUND CALCULATOR STATE ---
+  const [showMutualFundCalculator, setShowMutualFundCalculator] = useState(false);
+  const [investmentType, setInvestmentType] = useState('sip');
+  const [lumpsumAmount, setLumpsumAmount] = useState('');
+  const [sipAmount, setSipAmount] = useState('');
+  const [investmentDuration, setInvestmentDuration] = useState('');
+  const [expectedReturnRate, setExpectedReturnRate] = useState('');
+  const [mutualFundResult, setMutualFundResult] = useState(null);
+
   // --- UI STATE ---
   const [showReport, setShowReport] = useState(false);
   const fileInputRef = useRef(null);
@@ -292,6 +313,123 @@ export default function Dashboard() {
     } catch (err) {
       setError('Failed to delete reminder.');
     }
+  };
+
+  // --- ITR TAX CALCULATOR LOGIC (AY 2026-27 / FY 2025-26 rough estimate) ---
+  const calculateTaxForRegime = (regime, age, grossIncome, oldRegimeDeductions) => {
+    const taxableIncome = Math.max(0, grossIncome - oldRegimeDeductions);
+    let tax = 0;
+    let slabs = [];
+
+    const addSlab = (label, rate, taxableAmount) => {
+      const slabTax = Math.max(0, taxableAmount) * rate;
+      slabs.push({ label, rate: `${rate * 100}%`, tax: slabTax });
+      tax += slabTax;
+    };
+
+    if (regime === 'new') {
+      addSlab('₹0 - ₹4,00,000', 0, Math.min(taxableIncome, 400000));
+      addSlab('₹4,00,001 - ₹8,00,000', 0.05, Math.min(Math.max(taxableIncome - 400000, 0), 400000));
+      addSlab('₹8,00,001 - ₹12,00,000', 0.10, Math.min(Math.max(taxableIncome - 800000, 0), 400000));
+      addSlab('₹12,00,001 - ₹16,00,000', 0.15, Math.min(Math.max(taxableIncome - 1200000, 0), 400000));
+      addSlab('₹16,00,001 - ₹20,00,000', 0.20, Math.min(Math.max(taxableIncome - 1600000, 0), 400000));
+      addSlab('₹20,00,001 - ₹24,00,000', 0.25, Math.min(Math.max(taxableIncome - 2000000, 0), 400000));
+      addSlab('Above ₹24,00,000', 0.30, Math.max(taxableIncome - 2400000, 0));
+    } else {
+      const exemption = age === 'general' ? 250000 : age === 'senior' ? 300000 : 500000;
+      const exemptionLabel = age === 'general' ? '₹0 - ₹2,50,000' : age === 'senior' ? '₹0 - ₹3,00,000' : '₹0 - ₹5,00,000';
+      addSlab(exemptionLabel, 0, Math.min(taxableIncome, exemption));
+      const fivePercentBand = age === 'superSenior' ? 0 : 500000 - exemption;
+      if (fivePercentBand) addSlab(age === 'general' ? '₹2,50,001 - ₹5,00,000' : '₹3,00,001 - ₹5,00,000', 0.05, Math.min(Math.max(taxableIncome - exemption, 0), fivePercentBand));
+      addSlab(age === 'superSenior' ? '₹5,00,001 - ₹10,00,000' : '₹5,00,001 - ₹10,00,000', 0.20, Math.min(Math.max(taxableIncome - 500000, 0), 500000));
+      addSlab('Above ₹10,00,000', 0.30, Math.max(taxableIncome - 1000000, 0));
+    }
+
+    return { taxableIncome, tax, slabs };
+  };
+
+  const applyTaxRebate = (regime, taxableIncome, incomeTax) => {
+    const eligible = regime === 'new' ? taxableIncome <= 1200000 : taxableIncome <= 500000;
+    const limit = regime === 'new' ? 60000 : 12500;
+    return eligible ? Math.min(incomeTax, limit) : 0;
+  };
+
+  const calculateTax = () => {
+    const salary = Number(salaryIncome) || 0;
+    const otherIncome = Number(otherTaxIncome) || 0;
+    const grossIncome = salary + otherIncome;
+    const oldStandardDeduction = Math.min(50000, salary);
+    const newStandardDeduction = Math.min(75000, salary);
+    const enteredDeductions = oldStandardDeduction + Math.min(Number(section80C) || 0, 150000) + (Number(section80D) || 0) + (Number(housingLoan) || 0) + (Number(otherDeductions) || 0);
+    const deductionAmount = taxRegime === 'old' ? enteredDeductions : newStandardDeduction;
+    const calculation = calculateTaxForRegime(taxRegime, ageGroup, grossIncome, deductionAmount);
+    const rebate = applyTaxRebate(taxRegime, calculation.taxableIncome, calculation.tax);
+    const incomeTaxAfterRebate = calculation.tax - rebate;
+    const cess = incomeTaxAfterRebate * 0.04;
+    const totalTax = incomeTaxAfterRebate + cess;
+
+    const newCalculation = calculateTaxForRegime('new', ageGroup, grossIncome, newStandardDeduction);
+    const oldCalculation = calculateTaxForRegime('old', ageGroup, grossIncome, enteredDeductions);
+    const newComparison = (newCalculation.tax - applyTaxRebate('new', newCalculation.taxableIncome, newCalculation.tax)) * 1.04;
+    const oldComparison = (oldCalculation.tax - applyTaxRebate('old', oldCalculation.taxableIncome, oldCalculation.tax)) * 1.04;
+    setTaxResult({
+      grossIncome,
+      deductions: deductionAmount,
+      taxableIncome: calculation.taxableIncome,
+      taxBeforeRebate: calculation.tax,
+      incomeTax: incomeTaxAfterRebate,
+      rebate,
+      cess,
+      totalTax,
+      effectiveRate: grossIncome > 0 ? (totalTax / grossIncome) * 100 : 0,
+      slabs: calculation.slabs,
+      newComparison: Math.round(newComparison),
+      oldComparison: Math.round(oldComparison)
+    });
+  };
+
+  const formatINR = (value) => `₹${Number(value || 0).toLocaleString('en-IN', { maximumFractionDigits: 2 })}`;
+
+  // --- MUTUAL FUND CALCULATOR LOGIC ---
+  const calculateMutualFundReturns = () => {
+    const years = Number(investmentDuration);
+    const annualRate = Number(expectedReturnRate);
+    const amount = Number(investmentType === 'lumpsum' ? lumpsumAmount : sipAmount);
+    if (!amount || amount <= 0 || !years || years <= 0 || annualRate < 0) {
+      setError('Enter a positive investment amount and duration, plus a non-negative expected return.');
+      return;
+    }
+
+    const yearlyData = [];
+    let totalInvestment;
+    let totalValue;
+
+    if (investmentType === 'lumpsum') {
+      totalInvestment = amount;
+      totalValue = amount * Math.pow(1 + annualRate / 100, years);
+      for (let year = 0; year <= Math.floor(years); year += 1) {
+        const value = amount * Math.pow(1 + annualRate / 100, year);
+        yearlyData.push({ year, investment: amount, returns: value - amount });
+      }
+    } else {
+      const monthlyRate = annualRate / 1200;
+      const months = Math.round(years * 12);
+      totalInvestment = amount * months;
+      totalValue = monthlyRate === 0
+        ? totalInvestment
+        : amount * ((Math.pow(1 + monthlyRate, months) - 1) / monthlyRate) * (1 + monthlyRate);
+      for (let year = 0; year <= Math.floor(years); year += 1) {
+        const monthsElapsed = year * 12;
+        const investment = amount * monthsElapsed;
+        const value = monthlyRate === 0 || monthsElapsed === 0
+          ? investment
+          : amount * ((Math.pow(1 + monthlyRate, monthsElapsed) - 1) / monthlyRate) * (1 + monthlyRate);
+        yearlyData.push({ year, investment, returns: value - investment });
+      }
+    }
+
+    setError('');
+    setMutualFundResult({ totalInvestment, totalValue, estimatedReturns: totalValue - totalInvestment, yearlyData });
   };
 
   // --- CSV LOGIC ---
@@ -672,11 +810,98 @@ export default function Dashboard() {
           <button onClick={exportToCSV} style={{ padding: '8px 12px', cursor: 'pointer' }}>Export CSV</button>
           <input type="file" accept=".csv" style={{ display: 'none' }} ref={fileInputRef} onChange={importFromCSV} />
           <button onClick={() => fileInputRef.current.click()} style={{ padding: '8px 12px', cursor: 'pointer' }}>Import CSV</button>
+          <button onClick={() => setShowTaxCalculator(!showTaxCalculator)} style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: '#6f42c1', color: 'white', border: 'none', borderRadius: '3px' }}>
+            {showTaxCalculator ? 'Close ITR Calculator' : 'Start ITR Calculator'}
+          </button>
+          <button onClick={() => setShowMutualFundCalculator(!showMutualFundCalculator)} style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: '#148f77', color: 'white', border: 'none', borderRadius: '3px' }}>
+            {showMutualFundCalculator ? 'Close MF Calculator' : 'Start MF Calculator'}
+          </button>
           <button onClick={() => setShowReport(!showReport)} style={{ padding: '8px 12px', cursor: 'pointer', backgroundColor: '#1a5276', color: 'white', border: 'none', borderRadius: '3px' }}>
             {showReport ? 'View Transactions' : 'View Charts'}
           </button>
         </div>
       </div>
+
+      {showTaxCalculator && (
+        <div style={{ padding: '20px', backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '30px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '15px', marginBottom: '8px' }}>
+            <h2 style={{ color: '#1a5276', margin: 0 }}>ITR Tax Calculator</h2>
+            <span style={{ color: '#666', fontSize: '14px' }}>AY 2026-27 · FY 2025-26</span>
+          </div>
+          <p style={{ color: '#666', marginTop: 0 }}>A rough estimate for resident individuals. It excludes surcharge, marginal relief, special-rate income, and filing calculations—verify before filing.</p>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+            <div style={{ padding: '18px', backgroundColor: '#f9f9f9', border: '1px solid #eee', borderRadius: '8px' }}>
+              <h4 style={{ marginTop: 0, color: '#1a5276' }}>Income and deductions</h4>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Tax regime</label>
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}>
+                <button type="button" onClick={() => setTaxRegime('new')} style={{ flex: 1, padding: '9px', border: '1px solid #1a5276', borderRadius: '4px', cursor: 'pointer', backgroundColor: taxRegime === 'new' ? '#1a5276' : 'white', color: taxRegime === 'new' ? 'white' : '#1a5276' }}>New regime</button>
+                <button type="button" onClick={() => setTaxRegime('old')} style={{ flex: 1, padding: '9px', border: '1px solid #1a5276', borderRadius: '4px', cursor: 'pointer', backgroundColor: taxRegime === 'old' ? '#1a5276' : 'white', color: taxRegime === 'old' ? 'white' : '#1a5276' }}>Old regime</button>
+              </div>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Age group</label>
+              <select value={ageGroup} onChange={e => setAgeGroup(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: '15px', boxSizing: 'border-box' }}><option value="general">Below 60 years</option><option value="senior">60 to 80 years</option><option value="superSenior">Above 80 years</option></select>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Salary income</label>
+              <input type="number" min="0" placeholder="Annual salary before deductions" value={salaryIncome} onChange={e => setSalaryIncome(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: '15px', boxSizing: 'border-box' }} />
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Other income</label>
+              <input type="number" min="0" placeholder="Interest, rental income, etc." value={otherTaxIncome} onChange={e => setOtherTaxIncome(e.target.value)} style={{ width: '100%', padding: '10px', boxSizing: 'border-box' }} />
+
+              {taxRegime === 'old' && <div style={{ marginTop: '20px', borderTop: '1px solid #ddd', paddingTop: '15px' }}>
+                <h4 style={{ marginTop: 0, color: '#1a5276' }}>Old-regime deductions</h4>
+                <p style={{ fontSize: '13px', color: '#666' }}>A standard deduction of up to ₹50,000 is included automatically for salary income.</p>
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Section 80C (maximum ₹1,50,000)</label><input type="number" min="0" value={section80C} onChange={e => setSection80C(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: '12px', boxSizing: 'border-box' }} />
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Section 80D (medical insurance)</label><input type="number" min="0" value={section80D} onChange={e => setSection80D(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: '12px', boxSizing: 'border-box' }} />
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Housing-loan interest</label><input type="number" min="0" value={housingLoan} onChange={e => setHousingLoan(e.target.value)} style={{ width: '100%', padding: '10px', marginBottom: '12px', boxSizing: 'border-box' }} />
+                <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Other deductions</label><input type="number" min="0" value={otherDeductions} onChange={e => setOtherDeductions(e.target.value)} style={{ width: '100%', padding: '10px', boxSizing: 'border-box' }} />
+              </div>}
+              <button type="button" onClick={calculateTax} style={{ width: '100%', padding: '12px', marginTop: '20px', backgroundColor: '#1a5276', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Calculate tax</button>
+            </div>
+
+            <div>
+              {!taxResult ? <div style={{ height: '100%', minHeight: '220px', display: 'grid', placeItems: 'center', textAlign: 'center', padding: '20px', border: '1px dashed #bbb', borderRadius: '8px', color: '#777' }}>Enter your annual income and select <strong>Calculate tax</strong> to view the estimate.</div> : <>
+                <div style={{ padding: '18px', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '15px' }}>
+                  <h4 style={{ marginTop: 0, color: '#1a5276' }}>Tax calculation results</h4>
+                  <table style={{ width: '100%', borderCollapse: 'collapse' }}><tbody>
+                    {[['Gross total income', taxResult.grossIncome], ['Total deductions', taxResult.deductions], ['Taxable income', taxResult.taxableIncome], ['Income tax before rebate', taxResult.taxBeforeRebate], ['Section 87A rebate', taxResult.rebate], ['Income tax after rebate', taxResult.incomeTax], ['Health & education cess (4%)', taxResult.cess]].map(([label, value]) => <tr key={label}><th style={{ textAlign: 'left', padding: '8px 0', borderBottom: '1px solid #eee' }}>{label}</th><td style={{ textAlign: 'right', padding: '8px 0', borderBottom: '1px solid #eee' }}>{formatINR(value)}</td></tr>)}
+                    <tr><th style={{ textAlign: 'left', paddingTop: '12px', color: '#1a5276' }}>Total tax liability</th><td style={{ textAlign: 'right', paddingTop: '12px', color: '#1a5276', fontWeight: 'bold' }}>{formatINR(taxResult.totalTax)}</td></tr>
+                  </tbody></table>
+                  <p style={{ marginBottom: 0, color: '#666' }}>Effective tax rate: <strong>{taxResult.effectiveRate.toFixed(2)}%</strong></p>
+                </div>
+                <div style={{ padding: '18px', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '15px' }}>
+                  <h4 style={{ marginTop: 0, color: '#1a5276' }}>Tax slab breakdown</h4>
+                  {taxResult.slabs.filter(slab => slab.tax > 0 || slab.rate === '0%').map(slab => <div key={slab.label} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', padding: '7px 0', borderBottom: '1px solid #eee', fontSize: '14px' }}><span>{slab.label} ({slab.rate})</span><strong>{formatINR(slab.tax)}</strong></div>)}
+                </div>
+                <div style={{ padding: '18px', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '15px' }}>
+                  <h4 style={{ marginTop: 0, color: '#1a5276' }}>Regime comparison</h4>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '15px' }}><span>New regime: <strong>{formatINR(taxResult.newComparison)}</strong></span><span>Old regime: <strong>{formatINR(taxResult.oldComparison)}</strong></span></div>
+                  <p style={{ marginBottom: 0, color: taxResult.newComparison < taxResult.oldComparison ? '#1e8449' : '#b9770e' }}><strong>{taxResult.newComparison < taxResult.oldComparison ? 'New' : 'Old'} regime</strong> saves {formatINR(Math.abs(taxResult.newComparison - taxResult.oldComparison))} using the deductions entered above.</p>
+                </div>
+                <div style={{ maxWidth: '320px', margin: '0 auto' }}><Doughnut data={{ labels: ['Take-home pay', 'Tax payable'], datasets: [{ data: [Math.max(0, taxResult.grossIncome - taxResult.totalTax), taxResult.totalTax], backgroundColor: ['#28a745', '#dc3545'], borderWidth: 1 }] }} options={{ plugins: { legend: { position: 'bottom' } } }} /></div>
+              </>}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showMutualFundCalculator && (
+        <div style={{ padding: '20px', backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '30px' }}>
+          <h2 style={{ color: '#1a5276', marginTop: 0 }}>Mutual Fund Return Calculator</h2>
+          <p style={{ color: '#666', marginTop: 0 }}>A rough projection based on a constant expected return. Mutual-fund returns are market-linked and are not guaranteed.</p>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }}>
+            <div style={{ padding: '18px', backgroundColor: '#f9f9f9', border: '1px solid #eee', borderRadius: '8px' }}>
+              <h4 style={{ marginTop: 0, color: '#1a5276' }}>Investment details</h4>
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '15px' }}><button type="button" onClick={() => setInvestmentType('sip')} style={{ flex: 1, padding: '9px', border: '1px solid #148f77', borderRadius: '4px', cursor: 'pointer', backgroundColor: investmentType === 'sip' ? '#148f77' : 'white', color: investmentType === 'sip' ? 'white' : '#148f77' }}>SIP</button><button type="button" onClick={() => setInvestmentType('lumpsum')} style={{ flex: 1, padding: '9px', border: '1px solid #148f77', borderRadius: '4px', cursor: 'pointer', backgroundColor: investmentType === 'lumpsum' ? '#148f77' : 'white', color: investmentType === 'lumpsum' ? 'white' : '#148f77' }}>Lump sum</button></div>
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>{investmentType === 'sip' ? 'Monthly SIP amount' : 'One-time investment amount'}</label>
+              <input type="number" min="1" placeholder="Amount in ₹" value={investmentType === 'sip' ? sipAmount : lumpsumAmount} onChange={e => investmentType === 'sip' ? setSipAmount(e.target.value) : setLumpsumAmount(e.target.value)} style={{ width: '100%', padding: '10px', boxSizing: 'border-box', marginBottom: '15px' }} />
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Investment duration (years)</label>
+              <input type="number" min="1" step="0.5" placeholder="For example, 10" value={investmentDuration} onChange={e => setInvestmentDuration(e.target.value)} style={{ width: '100%', padding: '10px', boxSizing: 'border-box', marginBottom: '15px' }} />
+              <label style={{ display: 'block', fontWeight: 'bold', marginBottom: '6px' }}>Expected annual return (%)</label>
+              <input type="number" min="0" step="0.1" placeholder="For example, 12" value={expectedReturnRate} onChange={e => setExpectedReturnRate(e.target.value)} style={{ width: '100%', padding: '10px', boxSizing: 'border-box' }} />
+              <button type="button" onClick={calculateMutualFundReturns} style={{ width: '100%', padding: '12px', marginTop: '20px', backgroundColor: '#148f77', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' }}>Calculate projection</button>
+            </div>
+            <div>{!mutualFundResult ? <div style={{ minHeight: '220px', display: 'grid', placeItems: 'center', textAlign: 'center', padding: '20px', border: '1px dashed #bbb', borderRadius: '8px', color: '#777' }}>Choose SIP or lump sum, then calculate your estimated future value.</div> : <><div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px', marginBottom: '20px' }}><div style={{ padding: '12px', borderRadius: '8px', backgroundColor: '#eaf4fb' }}><small>Invested</small><strong style={{ display: 'block', color: '#1a5276' }}>{formatINR(mutualFundResult.totalInvestment)}</strong></div><div style={{ padding: '12px', borderRadius: '8px', backgroundColor: '#eafaf1' }}><small>Estimated returns</small><strong style={{ display: 'block', color: '#148f77' }}>{formatINR(mutualFundResult.estimatedReturns)}</strong></div><div style={{ padding: '12px', borderRadius: '8px', backgroundColor: '#f4ecf7' }}><small>Future value</small><strong style={{ display: 'block', color: '#6f42c1' }}>{formatINR(mutualFundResult.totalValue)}</strong></div></div><Bar data={{ labels: mutualFundResult.yearlyData.map(item => `Year ${item.year}`), datasets: [{ label: 'Investment', data: mutualFundResult.yearlyData.map(item => item.investment), backgroundColor: 'rgba(54, 162, 235, 0.6)' }, { label: 'Estimated returns', data: mutualFundResult.yearlyData.map(item => item.returns), backgroundColor: 'rgba(20, 143, 119, 0.6)' }] }} options={{ responsive: true, scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }, plugins: { legend: { position: 'bottom' } } }} /></>}</div>
+          </div>
+        </div>
+      )}
 
       {showReport ? (
         <div style={{ padding: '20px', backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '5px' }}>
