@@ -6,8 +6,10 @@ import { Doughnut, Bar, Line } from 'react-chartjs-2';
 
 ChartJS.register(ArcElement, Tooltip, Legend, CategoryScale, LinearScale, BarElement, LineElement, PointElement, Title);
 
-export default function Dashboard() {
+export default function Dashboard({ page }) {
   const navigate = useNavigate();
+  const pageFromHash = { '#reports': 'reports', '#itr': 'calculators', '#mutual-funds': 'calculators', '#portfolio': 'portfolio' }[window.location.hash];
+  const activePage = page || pageFromHash || 'transactions';
   // --- TRANSACTION STATE ---
   const [transactions, setTransactions] = useState([]);
   const [error, setError] = useState('');
@@ -48,7 +50,7 @@ export default function Dashboard() {
   const [reminderNotes, setReminderNotes] = useState('');
 
   // --- ITR TAX CALCULATOR STATE (FY 2024-25) ---
-  const [showTaxCalculator, setShowTaxCalculator] = useState(false);
+  const [showTaxCalculator, setShowTaxCalculator] = useState(activePage === 'calculators');
   const [taxRegime, setTaxRegime] = useState('new');
   const [ageGroup, setAgeGroup] = useState('general');
   const [salaryIncome, setSalaryIncome] = useState('');
@@ -60,7 +62,7 @@ export default function Dashboard() {
   const [taxResult, setTaxResult] = useState(null);
 
   // --- MUTUAL FUND CALCULATOR STATE ---
-  const [showMutualFundCalculator, setShowMutualFundCalculator] = useState(false);
+  const [showMutualFundCalculator, setShowMutualFundCalculator] = useState(activePage === 'calculators');
   const [investmentType, setInvestmentType] = useState('sip');
   const [lumpsumAmount, setLumpsumAmount] = useState('');
   const [sipAmount, setSipAmount] = useState('');
@@ -70,7 +72,7 @@ export default function Dashboard() {
 
   // --- PORTFOLIO STATE ---
   const [portfolio, setPortfolio] = useState([]);
-  const [showPortfolio, setShowPortfolio] = useState(false);
+  const [showPortfolio, setShowPortfolio] = useState(activePage === 'portfolio');
   const [showHoldingForm, setShowHoldingForm] = useState(false);
   const [selectedHolding, setSelectedHolding] = useState(null);
   const [stockSymbol, setStockSymbol] = useState('');
@@ -83,7 +85,7 @@ export default function Dashboard() {
   const [portfolioLoading, setPortfolioLoading] = useState(false);
 
   // --- UI STATE ---
-  const [showReport, setShowReport] = useState(false);
+  const [showReport, setShowReport] = useState(activePage === 'reports');
   const fileInputRef = useRef(null);
 
   const today = new Date();
@@ -602,8 +604,9 @@ export default function Dashboard() {
       
       {/* HEADER */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', paddingBottom: '10px', borderBottom: '2px solid #48c9b0' }}>
-        <h1 style={{ margin: 0, color: '#1a5276' }}>FlowFin Dashboard</h1>
+        <h1 style={{ margin: 0, color: '#1a5276' }}>{activePage === 'transactions' ? 'Transactions' : activePage === 'reports' ? 'Monthly Reports' : activePage === 'portfolio' ? 'Portfolio' : activePage === 'goals' ? 'Financial Goals' : activePage === 'reminders' ? 'Bill Reminders' : 'Financial Calculators'}</h1>
         <div style={{ display: 'flex', gap: '8px' }}>
+          <button onClick={() => navigate('/dashboard')} style={{ padding: '8px 16px', backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer' }}>Overview</button>
           <button onClick={() => navigate('/ai-chat')} style={{ padding: '8px 16px', backgroundColor: '#1a5276', color: '#fff', border: '1px solid #1a5276', borderRadius: '4px', cursor: 'pointer' }}>AI Assistant</button>
           <button onClick={() => window.location.href = 'http://localhost:5000/auth/logout'} style={{ padding: '8px 16px', backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '4px', cursor: 'pointer' }}>Logout</button>
         </div>
@@ -611,8 +614,9 @@ export default function Dashboard() {
       
       {error && <p style={{ color: 'red' }}>{error}</p>}
 
+      {['legacy', 'goals', 'reminders'].includes(activePage) && <>
       {/* OVERVIEW CARDS */}
-      <div style={{ display: 'flex', gap: '15px', marginBottom: '30px' }}>
+      <div style={{ display: activePage === 'legacy' ? 'flex' : 'none', gap: '15px', marginBottom: '30px' }}>
         <div style={{ flex: 1, backgroundColor: '#2e86c1', color: 'white', padding: '20px', borderRadius: '8px', textAlign: 'center', boxShadow: '0 4px 6px rgba(0,0,0,0.1)' }}>
           <h4>Overall Balance</h4>
           <h2 style={{ margin: '10px 0 0 0' }}>${total}</h2>
@@ -628,7 +632,7 @@ export default function Dashboard() {
       </div>
 
       {/* FINANCIAL GOALS SECTION */}
-      <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '30px', border: '1px solid #e0e0e0' }}>
+      <div id="goals" style={{ display: activePage === 'reminders' ? 'none' : 'block', backgroundColor: '#fff', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '30px', border: '1px solid #e0e0e0' }}>
         
         {/* VIEW 1: DETAILED GOAL VIEW OR EDIT GOAL VIEW */}
         {selectedGoal ? (
@@ -822,7 +826,7 @@ export default function Dashboard() {
       </div>
 
       {/* BILL REMINDERS SECTION */}
-      <div style={{ backgroundColor: '#fff', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '30px', border: '1px solid #e0e0e0' }}>
+      <div id="reminders" style={{ display: activePage === 'goals' ? 'none' : 'block', backgroundColor: '#fff', padding: '20px', borderRadius: '8px', boxShadow: '0 2px 4px rgba(0,0,0,0.05)', marginBottom: '30px', border: '1px solid #e0e0e0' }}>
         {selectedReminder ? (
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', borderBottom: '2px solid #48c9b0', paddingBottom: '10px' }}>
@@ -879,7 +883,7 @@ export default function Dashboard() {
       </div>
 
       {/* QUICK ACTIONS & REPORTS */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', padding: '15px', backgroundColor: '#f4f4f4', borderRadius: '5px' }}>
+      <div id="reports" style={{ display: activePage === 'legacy' ? 'flex' : 'none', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', padding: '15px', backgroundColor: '#f4f4f4', borderRadius: '5px' }}>
         <div><strong>Data & Reports</strong></div>
         <div style={{ display: 'flex', gap: '10px' }}>
           <button onClick={exportToCSV} style={{ padding: '8px 12px', cursor: 'pointer' }}>Export CSV</button>
@@ -899,6 +903,7 @@ export default function Dashboard() {
           </button>
         </div>
       </div>
+      </>}
 
       {showTaxCalculator && (
         <div style={{ padding: '20px', backgroundColor: '#fff', border: '1px solid #ddd', borderRadius: '8px', marginBottom: '30px' }}>
@@ -1004,7 +1009,7 @@ export default function Dashboard() {
         </div>
       )}
 
-      {showReport ? (
+      {activePage === 'reports' ? (
         <div style={{ padding: '20px', backgroundColor: '#fff', border: '1px solid #ccc', borderRadius: '5px' }}>
           <h2 style={{ textAlign: 'center', marginBottom: '30px' }}>Financial Reports</h2>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '40px', justifyContent: 'center' }}>
@@ -1015,11 +1020,11 @@ export default function Dashboard() {
             </div>
           </div>
         </div>
-      ) : (
+      ) : activePage === 'transactions' ? (
         <>
           <form onSubmit={onTransactionSubmit} style={{ marginBottom: '30px', display: 'flex', gap: '10px', padding: '15px', backgroundColor: editingId ? '#fff3cd' : '#f9f9f9', borderRadius: '5px', border: editingId ? '1px solid #ffeeba' : '1px solid #eee' }}>
             <input type="text" placeholder="Description..." value={text} onChange={(e) => setText(e.target.value)} required style={{ flex: 2, padding: '10px', border: '1px solid #ccc', borderRadius: '4px' }}/>
-            <input type="number" placeholder="Amount (- for expense)..." value={amount} onChange={(e) => setAmount(e.target.value)} required style={{ flex: 1, padding: '10px', border: '1px solid #ccc', borderRadius: '4px' }}/>
+            <input type="number" placeholder="Amount in INR (- for expense)..." value={amount} onChange={(e) => setAmount(e.target.value)} required style={{ flex: 1, padding: '10px', border: '1px solid #ccc', borderRadius: '4px' }}/>
             <button type="submit" style={{ padding: '10px 20px', cursor: 'pointer', backgroundColor: editingId ? '#28a745' : '#48c9b0', color: '#fff', border: 'none', borderRadius: '4px' }}>{editingId ? 'Update' : 'Add'}</button>
             {editingId && <button type="button" onClick={cancelEdit} style={{ padding: '10px', cursor: 'pointer', backgroundColor: '#6c757d', color: '#fff', border: 'none', borderRadius: '4px' }}>Cancel</button>}
           </form>
@@ -1031,7 +1036,7 @@ export default function Dashboard() {
                 <li key={t._id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '15px', borderBottom: '1px solid #eee', backgroundColor: '#fff', marginBottom: '8px', borderRadius: '4px', borderLeft: t.amount < 0 ? '5px solid #e74c3c' : '5px solid #28b463', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
                   <strong style={{ fontSize: '16px' }}>{t.text}</strong> 
                   <div>
-                    <span style={{ marginRight: '15px', fontWeight: 'bold' }}>{t.amount < 0 ? '-' : '+'}${Math.abs(t.amount)}</span>
+                    <span style={{ marginRight: '15px', fontWeight: 'bold' }}>{t.amount < 0 ? '-' : '+'}{formatINR(Math.abs(t.amount))}</span>
                     <button onClick={() => initiateEdit(t)} style={{ backgroundColor: '#f39c12', color: '#fff', border: 'none', padding: '5px 10px', cursor: 'pointer', borderRadius: '3px', marginRight: '5px' }}>✎ Edit</button>
                     <button onClick={() => deleteTransaction(t._id)} style={{ backgroundColor: '#e74c3c', color: 'white', border: 'none', padding: '5px 10px', cursor: 'pointer', borderRadius: '3px' }}>X</button>
                   </div>
@@ -1040,7 +1045,7 @@ export default function Dashboard() {
             </ul>
           )}
         </>
-      )}
+      ) : null}
 
       {/* --- ADD CONTRIBUTION MODAL OVERLAY --- */}
       {showContributeModal && selectedGoal && (
